@@ -29,28 +29,26 @@ def get_db(spec_file, intent, interp_method='spline', sim_env='TT'):
     return mos_db
 
 def design_seriesN_reg_eqn(db_n, sim_env,
-        vg_res, vdd, vref, vb_n,
+        ibias, vdd, vref, vb_n,
         cload, rload, rsource=0,
-        psrr_min, pm_min, ibias_margin, Ao_margin,
-        linereg_max, loadreg_max,
-        delta_v_lnr, delta_i_ldr):
+        vg_res, psrr_min, pm_min,
+        linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr):
     """
     Designs an LDO with an op amp abstracted as a voltage-controlled voltage
     source and source resistance. Equation-based.
     Inputs:
         db_n:         Database for NMOS device characterization data.
         sim_env:      Simulation corner.
-        vg_res:       Float. Step resolution when sweeping transistor gate voltage.
+        ibias:        Float. Bias current source.
         vdd:          Float. Supply voltage.
         vref:         Float. Reference voltage.
         vb_n:         Float. Back-gate/body voltage of NMOS.
         cload:        Float. Output load capacitance.
         rload:        Float. Output load resistance.
         rsource:      Float. Supply resistance.
+        vg_res:       Float. Step resolution when sweeping transistor gate voltage.
         psrr_min:     Float. Minimum PSRR.
         pm_min:       Float. Minimum phase margin.
-        ibias_margin  Float. Maximum acceptable percent error for bias current.
-        Ao_margin     Float. Maximum acceptable percent error for op amp DC gain.
         linereg_max   Float. Maximum percent change in output voltage given
                              change in input voltage.
         loadreg_max   Float. Maximum percent change in output voltage given
@@ -62,7 +60,6 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         ValueError: If unable to meet the specification requirements.
     Returns:
         A dictionary with the following key:value pairings:
-        ibias:  Float. DC bias current.
         Ao:     Float. DC gain of op amp.
         w1:     Float. Lowest op amp pole frequency.
         w2:     Float. Second lowest op amp pole frequency.
@@ -71,51 +68,32 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         linereg:Float. Expected maximum percent line regulation for given input.
         loadreg:Float. Expected maximum percent load regulation for given input.
     """
-    # Get sweep values (Vg, Vd)
+    # Find voltages and current to sweep transistor gate voltage.
     vth = db_n.query()['vth'] #DEBUGGING: Figure out how this will actually work (syntax)
+    if rload == 0:
+        raise ValueError("Output is shorted to ground.")
+    i_total = ibias + vref/rload
+    vds = vdd - i_total*rsource - vref
+
+    # Find range for sweep of gate voltage.
     vg_min = vref + vth
     vg_max = vdd + vth
     vg_vec = np.arange(vg_min, vg_max, vg_res)
 
-    nf_n_vec = np.arange(1, 20, 1)  # DEBUGGING: Is there a non-brute force way of setting this?
-
-    # Find the best operating point
+    # Find the closest operating point and small signal parameters.
     best_ibias = float('inf')
-    best_gm    = 0
-    best_ro    = 0
-
+    gm = 0
+    ro = 0
 
     for vg in vg_vec:
-        init_params = db_n.query(vgs=vg-vref, vds=vdd-vref, vbs=vb_n-0)
-        ibias_est = init_params['ibias']
-        margin = ibias_margin + 1
-        while margin > ibias_margin:
-            if ibias_est == 0:
-                raise ValueError("Estimate of bias current is 0.")
-            params = db_n.query(vgs=vg-vref, vds=vdd-vref-rsource*ibias_est, vbs=vb_n-0)
-            ibias_new = params['ibias']
-            new_margin = abs(ibias_est - ibias_new)/ibias_est
-            if new_margin > margin:
-                raise ValueError("Current accuracy margin is increasing.")
-            margin = new_margin
-            ibias_est = ibias_new
+        params = db_n.query(vgs=vg-vref, vds=vds, vbs=vb_n-vref)
+        ibias_est = params['ibias']
+        if abs(i_total - best_ibias) > abs(i_total - ibias_est):
+            best_ibias = ibias_est
+            gm = params['gm']
+            ro = 1 / params['gds']
 
-        # Finding current and small signal parameters at gate voltage
-        n_op_info = db_n.query(vgs=vg-vref, vds=high_vds, vbs=vb_n-0)
-        ibias = n_op_info['ibias']
-        gm    = n_op_info['gm']
-        gds   = n_op_info['gds']
-        ro    = 1/abs(gds)
-
-        if gm*ro > best_gm*best_ro and :
-            best_vg    = vg
-            best_ibias = ibias
-            best_gm    = gm
-            best_ro    = ro
-            print("Updating best gmro: (ibias: {}), (gm: {}), (ro: {}), (gmro: {})\n".format(best_ibias,best_gm,best_ro,best_gm*best_ro))
-    gm = best_gm
-    ro = best_ro
-    print("Chosen bias current: {}\n\n".format(best_ibias))
+    print("Estimated gm and ro: {}, {}\n\n".format(gm, ro))
 
     # Find location of output pole with determined parameters.
     wn = (ro + rsource + rload + gm*ro*rload)/(rload*cload*(ro + rsource))
