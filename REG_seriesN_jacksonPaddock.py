@@ -30,7 +30,7 @@ def get_db(spec_file, intent, interp_method='spline', sim_env='TT'):
 
 def design_seriesN_reg_eqn(db_n, sim_env,
         ibias, vdd, vref, vb_n,
-        cload, rload, rsource=0,
+        cload, rload, rsource,
         vg_res, psrr_min, pm_min,
         linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr):
     """
@@ -157,7 +157,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)(1+(x/w2)**2))
             rout_max = max(rout(0),rout(wo))
             a3 = 4*c1**2/d1**4
-            b3 = c1**2*(3*e1*e1 + 5*f1) + 12*a1*c1*e1/d1 - 2(a1/d1)**2)/d1**2
+            b3 = (c1**2*(3*e1*e1 + 5*f1) + 12*a1*c1*e1/d1 - 2*(a1/d1)**2)/d1**2
             c3 = 3*(f1*(c1*e1)**2 - 4*a1*c1*e1*f1/d1 + f1*(a1/d1)**2 + 2*(c1/d1)**2)
             d3 = 2*c1*e1*f1*(a1 + b1) + f1*(a1*e1) + f1*c1**2 + 4*(c1*e1)**2 - 2*a1*(b1*f1 + 8*c1*e1)/d1 + (4*a1**2 - 2*b1**2)/d1**2
             e3 = 4*c1*e1*(a1 + b1) + 2*(a1*e1)**2 + 2*c1**2 - 4*a1*b1/d1 - b1**2*f1
@@ -189,20 +189,20 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     else:
         final_op_amp = designs[len(designs)//2]
         final_design = dict(
-            ibias=best_ibias
-            Ao=final_op_amp[0]
-            w1=final_op_amp[1]
-            w2=final_op_amp[2]
-            psrr=final_op_amp[3]
-            pm=final_op_amp[4]
-            linereg=final_op_amp[5]
+            ibias=best_ibias,
+            Ao=final_op_amp[0],
+            w1=final_op_amp[1],
+            w2=final_op_amp[2],
+            psrr=final_op_amp[3],
+            pm=final_op_amp[4],
+            linereg=final_op_amp[5],
             loadreg=final_op_amp[6])
         return final_design
 
 
 def design_seriesN_reg_lti(db_n, sim_env,
         vg_res, vdd, vref, vb_n,
-        cload, rload, rsource=0,
+        cload, rload, rsource,
         psrr_min, pm_min, ibias_margin, Ao_margin,
         linereg_max, loadreg_max,
         delta_v_lnr, delta_i_ldr):
