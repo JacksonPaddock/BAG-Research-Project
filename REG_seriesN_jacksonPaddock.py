@@ -2,7 +2,7 @@
 # Jackson Paddock
 
 # ASSUMPTIONS:
-# (1) 100nm channel length, 500nm finger width.
+# (1) 90nm channel length, 500nm finger width.
 # (2) LVT devices
 # (3) All NMOS devices share a well, all PMOS devices share a well
 # (4) 300K
@@ -13,11 +13,17 @@ import pprint
 import numpy as np
 import scipy.optimize as sciopt
 
+import sys
+sys.path.append("./BAG_framework/")
+sys.path.append("./bag_testbenches_ec/")
+
 from math import isnan
 from bag.util.search import BinaryIterator
 from verification_ec.mos.query import MOSDBDiscrete
 from scipy import signal
 from bag.data.lti import LTICircuit, get_w_3db, get_stability_margins
+
+
 
 def get_db(spec_file, intent, interp_method='spline', sim_env='TT'):
     # initialize transistor database from simulation data
@@ -251,8 +257,8 @@ def design_seriesN_reg_lti(db_n, sim_env,
 def run_main():
     interp_method = 'spline'
     sim_env = 'TT'
-    nmos_spec = 'specs_mos_char/nch_w0d5_100nm.yaml'
-    pmos_spec = 'specs_mos_char/pch_w0d5_100nm.yaml'
+    nmos_spec = 'specs_mos_char/nch_w0d5_90n.yaml'
+    pmos_spec = 'specs_mos_char/pch_w0d5_90n.yaml'
     intent = 'lvt'
 
     nch_db = get_db(nmos_spec, intent, interp_method=interp_method,
