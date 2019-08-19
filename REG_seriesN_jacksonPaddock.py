@@ -75,7 +75,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         loadreg:Float. Expected maximum percent load regulation for given input.
     """
     # Find voltages and current to sweep transistor gate voltage.
-    vth = db_n.query()['vth'] #DEBUGGING: Figure out how this will actually work (syntax)
+    vth = db_n.query(vgs=vdd-vref,vds=vdd-vref,vbs=vb_n-vref)['vth'] #DEBUGGING: Figure out how this will actually work (syntax)
     if rload == 0:
         raise ValueError("Output is shorted to ground.")
     i_total = ibias + vref/rload
@@ -207,11 +207,10 @@ def design_seriesN_reg_eqn(db_n, sim_env,
 
 
 def design_seriesN_reg_lti(db_n, sim_env,
-        vg_res, vdd, vref, vb_n,
+        ibias, vdd, vref, vb_n,
         cload, rload, rsource,
-        psrr_min, pm_min, ibias_margin, Ao_margin,
-        linereg_max, loadreg_max,
-        delta_v_lnr, delta_i_ldr):
+        vg_res, psrr_min, pm_min,
+        linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr):
     """
     Designs an LDO with an op amp abstracted as a voltage-controlled voltage
     source and source resistance. Equation-based.
@@ -268,22 +267,25 @@ def run_main():
 
     specs = dict(
         db_n=nch_db,
-        db_p=pch_db,
         sim_env=sim_env,
+	ibias=0.001,
+	vdd=1.0,
+	vref=0.5,
+	vb_n=0,
+	cload=20e-15,
+	rload=1e3,
+	rsource=10,
         vg_res=0.01,
-        rf_res=100,
-        vdd=1.0,
-        cpd=5e-15,
-        cload=20e-15,
-        rdc_min=1e3,
-        fbw_min=5e9,
+	psrr_min=0.05,
         pm_min=45,
-        vb_n=0,
-        vb_p=0
+	linereg_max=0.05,
+	loadreg_max=0.05,
+	delta_v_lnr=1e-2,
+	delta_i_ldr=1e-4
         )
 
-    # amp_specs = design_seriesN_reg_eqn(**specs)
-    amp_specs = design_seriesN_reg_lti(**specs)
+    amp_specs = design_seriesN_reg_eqn(**specs)
+    # amp_specs = design_seriesN_reg_lti(**specs)
     pprint.pprint(amp_specs)
     print('done')
 
