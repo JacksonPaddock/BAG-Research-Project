@@ -74,19 +74,17 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         linereg:Float. Expected maximum percent line regulation for given input.
         loadreg:Float. Expected maximum percent load regulation for given input.
     """
-    # Find voltages and current to sweep transistor gate voltage.
-    vth = db_n.query(vgs=vdd-vref,vds=vdd-vref,vbs=vb_n-vref)['vth'] #DEBUGGING: Figure out how this will actually work (syntax)
     if rload == 0:
         raise ValueError("Output is shorted to ground.")
+
+    # Adjust for total current and voltage affected by it.
     i_total = ibias + vref/rload
     vds = vdd - i_total*rsource - vref
 
-    # Find range for sweep of gate voltage.
-    vg_min = vref + vth
-    vg_max = vdd + vth
-    vg_vec = np.arange(vg_min, vg_max, vg_res)
+    # Create range for sweep of gate voltage.
+    vg_vec = np.arange(vref, vdd, vg_res)
 
-    # Find the closest operating point and small signal parameters.
+    # Find the closest operating point and corresponding small signal parameters.
     best_ibias = float('inf')
     gm = 0
     ro = 0
@@ -124,12 +122,12 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         if wo_min > wo_max:
             print("Bounds cannot be met for op amp poles. Trying next iteration.")
             continue
-        Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo*wo/(wn*wn))(1 + wo_max**2/(w1*w1))(1 + wo_max**2/(w2*w2)))
+        Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo_max**2/(wn*wn))(1 + wo_max**2/(w1*w1))(1 + wo_max**2/(w2*w2)))
         Ao_min = psrr_min / (gm*ro) * np.sqrt((1 + wo_min**2/(w1*w1))(1 + wo_min**2/(w2*w2)))
         Ao = (Ao_max + Ao_min) / 2
         # TODO: Check if op amp design is plausible through different file?
         """ TODO: Sweep through Ao to decide rather than using midpoint?
-                  Or seep wo with bounds above to make equation simpler?
+                  Or sweep wo with bounds above to make equation simpler?
                   For (wo, Ao) > 0, relationship is monotonic and cubic.
                   H and Rout in terms of wo or Ao is even uglier than code below...
         """
@@ -255,7 +253,7 @@ def design_seriesN_reg_lti(db_n, sim_env,
 
 def run_main():
     interp_method = 'spline'
-    sim_env = 'TT'
+    sim_env = 'tt'
     nmos_spec = 'specs_mos_char/nch_w0d5_90n.yaml'
     pmos_spec = 'specs_mos_char/pch_w0d5_90n.yaml'
     intent = 'lvt'
