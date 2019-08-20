@@ -105,7 +105,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     if psrr_min > wn*(ro + rsource + gm*ro*rsource):
         wo_min = wn*np.sqrt((psrr_min/(wn*cload*(ro + rsource)))**2 - 1)
     else:
-        wo_min = 0
+        wo_min = 1
     # Sweep op amp lower pole magnitude and determine other parameters.
     stop = 6 #TODO: Define upper limit on pole frequencies.
     designs = []
@@ -292,8 +292,8 @@ def run_main():
         vg_res=0.01,
 	psrr_min=1,
         pm_min=45,
-	linereg_max=0.0199999,
-	loadreg_max=0.094242,
+	linereg_max=0.02,
+	loadreg_max=0.05,
 	delta_v_lnr=1e-2,
 	delta_i_ldr=1e-4
         )
