@@ -97,7 +97,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             gm = params['gm']
             ro = 1 / params['gds']
 
-    print("Estimated gm and ro: {}, {}\n\n".format(gm, ro))
+    print("Estimated gm and ro: {}, {}\n".format(gm, ro))
 
     # Find location of output pole with determined parameters.
     wn = (ro + rsource + rload + gm*ro*rload)/(rload*cload*(ro + rsource))
@@ -137,7 +137,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         for root in np.roots([a1,b1,c1,d1]):
                 if np.isreal(np.sqrt(root)):
                     wo = np.sqrt(root)
-        print(wo)
+
         # TODO: Check if op amp design is plausible through different file?
         """ TODO: Sweep through Ao to decide rather than using midpoint?
                   Or sweep wo with bounds above to make equation simpler?
@@ -169,7 +169,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 if np.isreal(root):
                     H_max = max(H_max, H(root))
             # Find maximum magnitude of output impedance in [0, wo].
-            rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)(1+(x/w2)**2))
+            rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)*(1+(x/w2)**2))
             rout_max = max(rout(0),rout(wo))
             a4 = 4*c2**2/d2**4
             b4 = (c2**2*(3*e2*e2 + 5*f2) + 12*a2*c2*e2/d2 - 2*(a2/d2)**2)/d2**2
@@ -184,6 +184,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         fits_linereg, fits_loadreg = False, False
         linereg = H_max*delta_v_lnr / vref
         loadreg = rout_max*delta_i_ldr / vref
+        print("line reg, load reg: {}, {}".format(linereg,loadreg))
         if not asymptote:
             if linereg_max >= linereg:
                 fits_linereg = True
@@ -198,11 +199,13 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg)]
             print("All bounds met.")
         else:
-            print("Not all bounds met.")
+            print("Not all bounds met.\n")
 
     if designs == []:
-        raise ValueError("FAIL. No solutions found.")
+        print("FAIL. No solutions found.")
+        return
     else:
+        print("Number of solutions found: {}".format(len(designs)))
         final_op_amp = designs[len(designs)//2]
         final_design = dict(
             ibias=best_ibias,
@@ -282,14 +285,14 @@ def run_main():
 	vdd=1.0,
 	vref=0.5,
 	vb_n=0,
-	cload=20e-15,
+	cload=20e-14,
 	rload=1e3,
 	rsource=10,
         vg_res=0.01,
-	psrr_min=0.05,
+	psrr_min=1,
         pm_min=45,
-	linereg_max=0.05,
-	loadreg_max=0.05,
+	linereg_max=0.0199999,
+	loadreg_max=0.094242,
 	delta_v_lnr=1e-2,
 	delta_i_ldr=1e-4
         )
