@@ -113,18 +113,31 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         # Choose third pole to interfere less with second pole.
         w2 = 100*max(wn, w1)
         # Find minimum op amp gain required.
-        # With 3 poles, wo is the solution to a very messy cubic equation:
-        a = - np.tan(np.pi/180 * (180 - pm_min)) * (wn + w1 + w2)
-        b = - (wn*w1 + wn*w2 + w1*w2)
-        c = - np.tan(np.pi/180 * (180 - pm_min)) * wn*w1*w2
-        d = np.cbrt((9*a*b - 2*a**3 - 27*c + 3*np.sqrt(3*(4*a**3*c - (a*b)**2 - 18*a*b*c + 4*b**3 + 27*c*c))) / 2)
-        wo_max = (d - (3*b - a*a)/d - a) / 3
+        # With 3 poles, wo is the solution to a cubic equation:
+        a = 1
+        b = -(wn + w1 + w2) * np.tan(np.pi/180*(180 - pm_min))
+        c = -(wn*w1 + wn*w2 + w1*w2)
+        d = wn*w1*w2*np.tan(np.pi/180*(180 - pm_min))
+        wo_max = float('inf')
+        for root in np.roots([a,b,c,d]):
+            if wo_max > root and root >= 0:
+                wo_max = root
         if wo_min > wo_max:
             print("Bounds cannot be met for op amp poles. Trying next iteration.")
             continue
-        Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo_max**2/(wn*wn))(1 + wo_max**2/(w1*w1))(1 + wo_max**2/(w2*w2)))
-        Ao_min = psrr_min / (gm*ro) * np.sqrt((1 + wo_min**2/(w1*w1))(1 + wo_min**2/(w2*w2)))
+        # Find bounds on op amp gain.
+        Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo_max**2/(wn*wn))*(1 + wo_max**2/(w1*w1))*(1 + wo_max**2/(w2*w2)))
+        Ao_min = psrr_min / (gm*ro) * np.sqrt((1 + wo_min**2/(w1*w1))*(1 + wo_min**2/(w2*w2)))
+        # Get midpoint of gain range (Ao) and find unity gain frequency (wo).
         Ao = (Ao_max + Ao_min) / 2
+        a1 = 1/(wn*w1*w2)**2
+        b1 = 1/(wn*w1)**2+1/(wn*w2)**2+1/(w1*w2)**2
+        c1 = 1/w1**2+1/w2**2+1/wn**2
+        d1 = 1-(gm*ro*Ao/(wn*(ro+rsource)*cload))**2
+        for root in np.roots([a1,b1,c1,d1]):
+                if np.isreal(np.sqrt(root)):
+                    wo = np.sqrt(root)
+        print(wo)
         # TODO: Check if op amp design is plausible through different file?
         """ TODO: Sweep through Ao to decide rather than using midpoint?
                   Or sweep wo with bounds above to make equation simpler?
@@ -132,40 +145,38 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                   H and Rout in terms of wo or Ao is even uglier than code below...
         """
 
-        # Find minimum op amp gain in [0, wo], which is at wo.
-        A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
         # Variables for transfer function and output resistance equations.
-        a1 = ro + rsource + rload + gm*ro*rload
-        b1 = gm*ro*rload*Ao + a1
-        c1 = rload*cload*(ro + rsource)
-        d1 = w1*w2
-        e1 = 1/w1 + 1/w2
-        f1 = 1/(w1*w1)+1/(w2*w2)
-        if a1 > c1*d1*e1 and b1/(a1 - c1*d1*e1) == 1 + a1*e1/c1:
+        a2 = ro + rsource + rload + gm*ro*rload
+        b2 = gm*ro*rload*Ao + a2
+        c2 = rload*cload*(ro + rsource)
+        d2 = w1*w2
+        e2 = 1/w1 + 1/w2
+        f2 = 1/(w1*w1)+1/(w2*w2)
+        if a2 > c2*d2*e2 and b2/(a2 - c2*d2*e2) == 1 + a2*e2/c2:
             asymptote = True
             H_max = float('inf')
             rout_max = float('inf')
         else:
             asymptote = False
             # Find maximum magnitude of transfer function in [0, wo].
-            H = lambda x: (b1 - a1) / np.sqrt((b1 + x*x*(c1*e1 - a1/d1))**2 + (x*(a1*e1 + c1*(1 - x*x/d1)))**2)
+            H = lambda x: (b2 - a2) / np.sqrt((b2 + x*x*(c2*e2 - a2/d2))**2 + (x*(a2*e2 + c2*(1 - x*x/d2)))**2)
             H_max = max(H(0),H(wo))
-            a2 = 3*c**2
-            b2 = 2*c1*d1*(c1 + 2*a1*e1) - (c1*d1*e1)**2 - a1**2
-            c2 = 2*c1*d1**2*e1*(b1 + a1) + (a1*d1*e1)**2 + (c1*d1)**2 - 2*a1*d1*b1
-            deriv_roots2 = np.sqrt(np.roots([a2, b2, c2]))
+            a3 = 3*c**2
+            b3 = 2*c2*d2*(c2 + 2*a2*e2) - (c2*d2*e2)**2 - a2**2
+            c3 = 2*c2*d2**2*e2*(b2 + a2) + (a2*d2*e2)**2 + (c2*d2)**2 - 2*a2*d2*b2
+            deriv_roots2 = np.sqrt(np.roots([a3, b3, c3]))
             for root in deriv_roots2:
                 if np.isreal(root):
                     H_max = max(H_max, H(root))
             # Find maximum magnitude of output impedance in [0, wo].
             rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)(1+(x/w2)**2))
             rout_max = max(rout(0),rout(wo))
-            a3 = 4*c1**2/d1**4
-            b3 = (c1**2*(3*e1*e1 + 5*f1) + 12*a1*c1*e1/d1 - 2*(a1/d1)**2)/d1**2
-            c3 = 3*(f1*(c1*e1)**2 - 4*a1*c1*e1*f1/d1 + f1*(a1/d1)**2 + 2*(c1/d1)**2)
-            d3 = 2*c1*e1*f1*(a1 + b1) + f1*(a1*e1) + f1*c1**2 + 4*(c1*e1)**2 - 2*a1*(b1*f1 + 8*c1*e1)/d1 + (4*a1**2 - 2*b1**2)/d1**2
-            e3 = 4*c1*e1*(a1 + b1) + 2*(a1*e1)**2 + 2*c1**2 - 4*a1*b1/d1 - b1**2*f1
-            deriv_roots3 = np.sqrt(np.roots([a3, b3, c3, d3, e3]))
+            a4 = 4*c2**2/d2**4
+            b4 = (c2**2*(3*e2*e2 + 5*f2) + 12*a2*c2*e2/d2 - 2*(a2/d2)**2)/d2**2
+            c4 = 3*(f2*(c2*e2)**2 - 4*a2*c2*e2*f2/d2 + f2*(a2/d2)**2 + 2*(c2/d2)**2)
+            d4 = 2*c2*e2*f2*(a2 + b2) + f2*(a2*e2) + f2*c2**2 + 4*(c2*e2)**2 - 2*a2*(b2*f2 + 8*c2*e2)/d2 + (4*a2**2 - 2*b2**2)/d2**2
+            e4 = 4*c2*e2*(a2 + b2) + 2*(a2*e2)**2 + 2*c2**2 - 4*a2*b2/d2 - b2**2*f2
+            deriv_roots3 = np.sqrt(np.roots([a4, b4, c4, d4, e4]))
             for root in deriv_roots3:
                 if np.isreal(root):
                     rout_max = max(rout_max, rout(root))
@@ -181,6 +192,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 fits_loadreg = True
                 print("Load Regulation bound met.")
         if fits_linereg and fits_loadreg:
+            A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
             psrr = gm*ro*A
             pm = 180 - 180/np.pi*(np.arctan(wo/wn) + np.arctan(wo/w1) + np.arctan(wo/w2))
             designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg)]
