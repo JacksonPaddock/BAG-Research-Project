@@ -125,7 +125,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         if wo_min > wo_max:
             print("Bounds cannot be met for op amp poles. Trying next iteration.")
             continue
-        # Find bounds on op amp gain.
+        """# Find bounds on op amp gain.
         Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo_max**2/(wn*wn))*(1 + wo_max**2/(w1*w1))*(1 + wo_max**2/(w2*w2)))
         Ao_min = psrr_min / (gm*ro) * np.sqrt((1 + wo_min**2/(w1*w1))*(1 + wo_min**2/(w2*w2)))
         # Get midpoint of gain range (Ao) and find unity gain frequency (wo).
@@ -136,7 +136,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         d1 = 1-(gm*ro*Ao/(wn*(ro+rsource)*cload))**2
         for root in np.roots([a1,b1,c1,d1]):
                 if np.isreal(np.sqrt(root)):
-                    wo = np.sqrt(root)
+                    wo = np.sqrt(root)"""
 
         # TODO: Check if op amp design is plausible through different file?
         """ TODO: Sweep through Ao to decide rather than using midpoint?
@@ -144,62 +144,63 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                   For (wo, Ao) > 0, relationship is monotonic and cubic.
                   H and Rout in terms of wo or Ao is even uglier than code below...
         """
-
-        # Variables for transfer function and output resistance equations.
-        a2 = ro + rsource + rload + gm*ro*rload
-        b2 = gm*ro*rload*Ao + a2
-        c2 = rload*cload*(ro + rsource)
-        d2 = w1*w2
-        e2 = 1/w1 + 1/w2
-        f2 = 1/(w1*w1)+1/(w2*w2)
-        if a2 > c2*d2*e2 and b2/(a2 - c2*d2*e2) == 1 + a2*e2/c2:
-            asymptote = True
-            H_max = float('inf')
-            rout_max = float('inf')
-        else:
-            asymptote = False
-            # Find maximum magnitude of transfer function in [0, wo].
-            H = lambda x: (b2 - a2) / np.sqrt((b2 + x*x*(c2*e2 - a2/d2))**2 + (x*(a2*e2 + c2*(1 - x*x/d2)))**2)
-            H_max = max(H(0),H(wo))
-            a3 = 3*c**2
-            b3 = 2*c2*d2*(c2 + 2*a2*e2) - (c2*d2*e2)**2 - a2**2
-            c3 = 2*c2*d2**2*e2*(b2 + a2) + (a2*d2*e2)**2 + (c2*d2)**2 - 2*a2*d2*b2
-            deriv_roots2 = np.sqrt(np.roots([a3, b3, c3]))
-            for root in deriv_roots2:
-                if np.isreal(root):
-                    H_max = max(H_max, H(root))
-            # Find maximum magnitude of output impedance in [0, wo].
-            rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)*(1+(x/w2)**2))
-            rout_max = max(rout(0),rout(wo))
-            a4 = 4*c2**2/d2**4
-            b4 = (c2**2*(3*e2*e2 + 5*f2) + 12*a2*c2*e2/d2 - 2*(a2/d2)**2)/d2**2
-            c4 = 3*(f2*(c2*e2)**2 - 4*a2*c2*e2*f2/d2 + f2*(a2/d2)**2 + 2*(c2/d2)**2)
-            d4 = 2*c2*e2*f2*(a2 + b2) + f2*(a2*e2) + f2*c2**2 + 4*(c2*e2)**2 - 2*a2*(b2*f2 + 8*c2*e2)/d2 + (4*a2**2 - 2*b2**2)/d2**2
-            e4 = 4*c2*e2*(a2 + b2) + 2*(a2*e2)**2 + 2*c2**2 - 4*a2*b2/d2 - b2**2*f2
-            deriv_roots3 = np.sqrt(np.roots([a4, b4, c4, d4, e4]))
-            for root in deriv_roots3:
-                if np.isreal(root):
-                    rout_max = max(rout_max, rout(root))
-        # Check if parameters fit given bounds.
-        fits_linereg, fits_loadreg = False, False
-        linereg = H_max*delta_v_lnr / vref
-        loadreg = rout_max*delta_i_ldr / vref
-        print("line reg, load reg: {}, {}".format(linereg,loadreg))
-        if not asymptote:
-            if linereg_max >= linereg:
-                fits_linereg = True
-                print("Line Regulation bound met.")
-            if loadreg_max >= loadreg:
-                fits_loadreg = True
-                print("Load Regulation bound met.")
-        if fits_linereg and fits_loadreg:
-            A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
-            psrr = gm*ro*A
-            pm = 180 - 180/np.pi*(np.arctan(wo/wn) + np.arctan(wo/w1) + np.arctan(wo/w2))
-            designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg)]
-            print("All bounds met.")
-        else:
-            print("Not all bounds met.\n")
+        for wo in np.logspace(np.log10(wo_min), np.log10(wo_max)):
+            Ao = wn*(ro + rsource)*cload*(1 + (wo/wn)**2)*(1 + (wo/w1)**2)*(1 + (wo/w2)**2)/(gm*ro)
+            # Variables for transfer function and output resistance equations.
+            a2 = ro + rsource + rload + gm*ro*rload
+            b2 = gm*ro*rload*Ao + a2
+            c2 = rload*cload*(ro + rsource)
+            d2 = w1*w2
+            e2 = 1/w1 + 1/w2
+            f2 = 1/(w1*w1)+1/(w2*w2)
+            if a2 > c2*d2*e2 and b2/(a2 - c2*d2*e2) == 1 + a2*e2/c2:
+                asymptote = True
+                H_max = float('inf')
+                rout_max = float('inf')
+            else:
+                asymptote = False
+                # Find maximum magnitude of transfer function in [0, wo].
+                H = lambda x: (b2 - a2) / np.sqrt((b2 + x*x*(c2*e2 - a2/d2))**2 + (x*(a2*e2 + c2*(1 - x*x/d2)))**2)
+                H_max = max(H(0),H(wo))
+                a3 = 3*c**2
+                b3 = 2*c2*d2*(c2 + 2*a2*e2) - (c2*d2*e2)**2 - a2**2
+                c3 = 2*c2*d2**2*e2*(b2 + a2) + (a2*d2*e2)**2 + (c2*d2)**2 - 2*a2*d2*b2
+                deriv_roots2 = np.sqrt(np.roots([a3, b3, c3]))
+                for root in deriv_roots2:
+                    if np.isreal(root):
+                        H_max = max(H_max, H(root))
+                # Find maximum magnitude of output impedance in [0, wo].
+                rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)*(1+(x/w2)**2))
+                rout_max = max(rout(0),rout(wo))
+                a4 = 4*c2**2/d2**4
+                b4 = (c2**2*(3*e2*e2 + 5*f2) + 12*a2*c2*e2/d2 - 2*(a2/d2)**2)/d2**2
+                c4 = 3*(f2*(c2*e2)**2 - 4*a2*c2*e2*f2/d2 + f2*(a2/d2)**2 + 2*(c2/d2)**2)
+                d4 = 2*c2*e2*f2*(a2 + b2) + f2*(a2*e2) + f2*c2**2 + 4*(c2*e2)**2 - 2*a2*(b2*f2 + 8*c2*e2)/d2 + (4*a2**2 - 2*b2**2)/d2**2
+                e4 = 4*c2*e2*(a2 + b2) + 2*(a2*e2)**2 + 2*c2**2 - 4*a2*b2/d2 - b2**2*f2
+                deriv_roots3 = np.sqrt(np.roots([a4, b4, c4, d4, e4]))
+                for root in deriv_roots3:
+                    if np.isreal(root):
+                        rout_max = max(rout_max, rout(root))
+            # Check if parameters fit given bounds.
+            fits_linereg, fits_loadreg = False, False
+            linereg = H_max*delta_v_lnr / vref
+            loadreg = rout_max*delta_i_ldr / vref
+            print("line reg, load reg: {}, {}".format(linereg,loadreg))
+            if not asymptote:
+                if linereg_max >= linereg:
+                    fits_linereg = True
+                    print("Line Regulation bound met.")
+                if loadreg_max >= loadreg:
+                    fits_loadreg = True
+                    print("Load Regulation bound met.")
+            if fits_linereg and fits_loadreg:
+                A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
+                psrr = gm*ro*A
+                pm = 180 - 180/np.pi*(np.arctan(wo/wn) + np.arctan(wo/w1) + np.arctan(wo/w2))
+                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg)]
+                print("All bounds met.")
+            else:
+                print("Not all bounds met.\n")
 
     if designs == []:
         print("FAIL. No solutions found.")
