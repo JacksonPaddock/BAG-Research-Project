@@ -85,19 +85,20 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     vg_vec = np.arange(vref, vdd, vg_res)
 
     # Find the closest operating point and corresponding small signal parameters.
-    best_ibias = float('inf')
+    best_i_total_est = float('inf')
     gm = 0
     ro = 0
-
+    
     for vg in vg_vec:
         params = db_n.query(vgs=vg-vref, vds=vds, vbs=vb_n-vref)
-        ibias_est = params['ibias']
-        if abs(i_total - best_ibias) > abs(i_total - ibias_est):
-            best_ibias = ibias_est
+        i_total_est = params['ibias']
+        if abs(i_total - best_i_total_est) > abs(i_total - i_total_est):
+            best_i_total_est = i_total_est
             gm = params['gm']
             ro = 1 / params['gds']
 
     print("Estimated gm and ro: {}, {}\n".format(gm, ro))
+    #print(db_n.query(vds=vds,vbs=vb_n-vref))
 
     # Find location of output pole with determined parameters.
     wn = (ro + rsource + rload + gm*ro*rload)/(rload*cload*(ro + rsource))
@@ -107,7 +108,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     else:
         wo_min = 1
     # Sweep op amp lower pole magnitude and determine other parameters.
-    stop = 6 #TODO: Define upper limit on pole frequencies.
+    stop = 8 #TODO: Define upper limit on pole frequencies.
     designs = []
     for w1 in np.logspace(1,stop):
         # Choose third pole to interfere less with second pole.
@@ -123,27 +124,13 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             if wo_max > root and root >= 0:
                 wo_max = root
         if wo_min > wo_max:
-            print("Bounds cannot be met for op amp poles. Trying next iteration.")
+            print("Bounds cannot be met for specific op amp poles. Trying next iteration.")
             continue
-        """# Find bounds on op amp gain.
-        Ao_max = wn * cload * (ro + rsource) / (gm*ro) * np.sqrt((1 + wo_max**2/(wn*wn))*(1 + wo_max**2/(w1*w1))*(1 + wo_max**2/(w2*w2)))
-        Ao_min = psrr_min / (gm*ro) * np.sqrt((1 + wo_min**2/(w1*w1))*(1 + wo_min**2/(w2*w2)))
-        # Get midpoint of gain range (Ao) and find unity gain frequency (wo).
-        Ao = (Ao_max + Ao_min) / 2
-        a1 = 1/(wn*w1*w2)**2
-        b1 = 1/(wn*w1)**2+1/(wn*w2)**2+1/(w1*w2)**2
-        c1 = 1/w1**2+1/w2**2+1/wn**2
-        d1 = 1-(gm*ro*Ao/(wn*(ro+rsource)*cload))**2
-        for root in np.roots([a1,b1,c1,d1]):
-                if np.isreal(np.sqrt(root)):
-                    wo = np.sqrt(root)"""
+        
 
         # TODO: Check if op amp design is plausible through different file?
-        """ TODO: Sweep through Ao to decide rather than using midpoint?
-                  Or sweep wo with bounds above to make equation simpler?
-                  For (wo, Ao) > 0, relationship is monotonic and cubic.
-                  H and Rout in terms of wo or Ao is even uglier than code below...
-        """
+        
+
         for wo in np.logspace(np.log10(wo_min), np.log10(wo_max)):
             Ao = wn*(ro + rsource)*cload*(1 + (wo/wn)**2)*(1 + (wo/w1)**2)*(1 + (wo/w2)**2)/(gm*ro)
             # Variables for transfer function and output resistance equations.
@@ -180,12 +167,12 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 deriv_roots3 = np.sqrt(np.roots([a4, b4, c4, d4, e4]))
                 for root in deriv_roots3:
                     if np.isreal(root):
-                        rout_max = max(rout_max, rout(root))
+                        rout_max = np.real(max(rout_max, rout(root)))
             # Check if parameters fit given bounds.
             fits_linereg, fits_loadreg = False, False
             linereg = H_max*delta_v_lnr / vref
             loadreg = rout_max*delta_i_ldr / vref
-            print("line reg, load reg: {}, {}".format(linereg,loadreg))
+            #print("line reg, load reg: {}, {}".format(linereg,loadreg))
             if not asymptote:
                 if linereg_max >= linereg:
                     fits_linereg = True
@@ -201,7 +188,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 print("All bounds met.")
             else:
                 print("Not all bounds met.\n")
-
+                
     if designs == []:
         print("FAIL. No solutions found.")
         return
@@ -209,7 +196,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         print("Number of solutions found: {}".format(len(designs)))
         final_op_amp = designs[len(designs)//2]
         final_design = dict(
-            ibias=best_ibias,
+            ibias=best_i_total_est - vref/rload,
             Ao=final_op_amp[0],
             w1=final_op_amp[1],
             w2=final_op_amp[2],
@@ -271,25 +258,22 @@ def run_main():
     interp_method = 'spline'
     sim_env = 'tt'
     nmos_spec = 'specs_mos_char/nch_w0d5_90n.yaml'
-    pmos_spec = 'specs_mos_char/pch_w0d5_90n.yaml'
     intent = 'lvt'
 
     nch_db = get_db(nmos_spec, intent, interp_method=interp_method,
-                    sim_env=sim_env)
-    pch_db = get_db(pmos_spec, intent, interp_method=interp_method,
                     sim_env=sim_env)
 
     specs = dict(
         db_n=nch_db,
         sim_env=sim_env,
-	ibias=0.001,
+	ibias=1e-6,
 	vdd=1.0,
 	vref=0.5,
 	vb_n=0,
 	cload=20e-14,
-	rload=1e3,
+	rload=1e6,
 	rsource=10,
-        vg_res=0.01,
+        vg_res=0.001,
 	psrr_min=1,
         pm_min=45,
 	linereg_max=0.02,
