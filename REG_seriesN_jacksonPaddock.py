@@ -150,23 +150,23 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 H = lambda x: (b2 - a2) / np.sqrt((b2 + x*x*(c2*e2 - a2/d2))**2 + (x*(a2*e2 + c2*(1 - x*x/d2)))**2)
                 H_max = max(H(0),H(wo))
                 a3 = 3*c**2
-                b3 = 2*c2*d2*(c2 + 2*a2*e2) - (c2*d2*e2)**2 - a2**2
+                b3 = - 4*c2*d2*(c2 + 2*a2*e2) + 2*(c2*d2*e2)**2 + 2*a2**2
                 c3 = 2*c2*d2**2*e2*(b2 + a2) + (a2*d2*e2)**2 + (c2*d2)**2 - 2*a2*d2*b2
                 deriv_roots2 = np.sqrt(np.roots([a3, b3, c3]))
                 for root in deriv_roots2:
-                    if np.isreal(root):
+                    if np.isreal(root): #TODO: Should root only be considered if less than wo?
                         H_max = max(H_max, H(root))
                 # Find maximum magnitude of output impedance in [0, wo].
                 rout = lambda x: (ro + rsource)/(gm*ro*Ao)*H(x)*np.sqrt((1+(x/w1)**2)*(1+(x/w2)**2))
                 rout_max = max(rout(0),rout(wo))
                 a4 = 4*c2**2/d2**4
-                b4 = (c2**2*(3*e2*e2 + 5*f2) + 12*a2*c2*e2/d2 - 2*(a2/d2)**2)/d2**2
-                c4 = 3*(f2*(c2*e2)**2 - 4*a2*c2*e2*f2/d2 + f2*(a2/d2)**2 + 2*(c2/d2)**2)
-                d4 = 2*c2*e2*f2*(a2 + b2) + f2*(a2*e2) + f2*c2**2 + 4*(c2*e2)**2 - 2*a2*(b2*f2 + 8*c2*e2)/d2 + (4*a2**2 - 2*b2**2)/d2**2
+                b4 = (c2**2*(3*e2*e2 + 5*f2) - 12*a2*c2*e2/d2 + 2*(a2/d2)**2)/d2**2
+                c4 = 3*f2*(c2*e2)**2 - 10*a2*c2*e2*f2/d2 + 3*f2*(a2/d2)**2 + 12*(c2/d2)**2
+                d4 = 2*c2*e2*f2*(a2 + b2) + f2*(a2*e2)**2 + f2*c2**2 + 4*(c2*e2)**2 - 2*a2*(b2*f2 + 8*c2*e2)/d2 + (4*a2**2 - 2*b2**2)/d2**2
                 e4 = 4*c2*e2*(a2 + b2) + 2*(a2*e2)**2 + 2*c2**2 - 4*a2*b2/d2 - b2**2*f2
                 deriv_roots3 = np.sqrt(np.roots([a4, b4, c4, d4, e4]))
                 for root in deriv_roots3:
-                    if np.isreal(root):
+                    if np.isreal(root): #TODO: Should root only be considered if less than wo?
                         rout_max = np.real(max(rout_max, rout(root)))
             # Check if parameters fit given bounds.
             fits_linereg, fits_loadreg = False, False
@@ -278,8 +278,8 @@ def run_main():
         pm_min=45,
 	linereg_max=0.02,
 	loadreg_max=0.05,
-	delta_v_lnr=1e-2,
-	delta_i_ldr=1e-4
+	delta_v_lnr=1e-3,
+	delta_i_ldr=1e-9
         )
 
     amp_specs = design_seriesN_reg_eqn(**specs)
