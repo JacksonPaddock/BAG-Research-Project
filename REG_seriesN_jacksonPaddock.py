@@ -37,7 +37,7 @@ def get_db(spec_file, intent, interp_method='spline', sim_env='TT'):
 def design_seriesN_reg_eqn(db_n, sim_env,
         ibias, vdd, vref, vb_n,
         cload, rload, rsource,
-        vg_res, psrr_min, pm_min,
+        vg_res, psrr_min, pm_min, err_max,
         linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr):
     """
     Designs an LDO with an op amp abstracted as a voltage-controlled voltage
@@ -55,6 +55,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         vg_res:       Float. Step resolution when sweeping transistor gate voltage.
         psrr_min:     Float. Minimum PSRR.
         pm_min:       Float. Minimum phase margin.
+        err_max       Float. Maximum percent static error at output.
         linereg_max   Float. Maximum percent change in output voltage given
                              change in input voltage.
         loadreg_max   Float. Maximum percent change in output voltage given
@@ -111,7 +112,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     stop = 8 #TODO: Define upper limit on pole frequencies.
     designs = []
     for w1 in np.logspace(1,stop):
-        # Choose third pole to interfere less with second pole.
+        # Choose third pole to interfere less with second pole. TODO: Better way?
         w2 = 100*max(wn, w1)
         # Find minimum op amp gain required.
         # With 3 poles, wo is the solution to a cubic equation:
@@ -130,9 +131,11 @@ def design_seriesN_reg_eqn(db_n, sim_env,
 
         # TODO: Check if op amp design is plausible through different file?
         
-
+        # TODO: Check definition of Ao. What equation is it derived from? why does it not set psrr correctly?
         for wo in np.logspace(np.log10(wo_min), np.log10(wo_max)):
             Ao = wn*(ro + rsource)*cload*(1 + (wo/wn)**2)*(1 + (wo/w1)**2)*(1 + (wo/w2)**2)/(gm*ro)
+            if Ao < vg/err_max - 1:
+                continue
             # Variables for transfer function and output resistance equations.
             a2 = ro + rsource + rload + gm*ro*rload
             b2 = gm*ro*rload*Ao + a2
@@ -176,18 +179,19 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             if not asymptote:
                 if linereg_max >= linereg:
                     fits_linereg = True
-                    print("Line Regulation bound met.")
+                    #print("Line Regulation bound met.")
                 if loadreg_max >= loadreg:
                     fits_loadreg = True
-                    print("Load Regulation bound met.")
-            if fits_linereg and fits_loadreg:
-                A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
-                psrr = gm*ro*A
+                    #print("Load Regulation bound met.")
+            A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
+            psrr = gm*ro*A
+            if fits_linereg and fits_loadreg and psrr > psrr_min:
                 pm = 180 - 180/np.pi*(np.arctan(wo/wn) + np.arctan(wo/w1) + np.arctan(wo/w2))
-                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg)]
-                print("All bounds met.")
+                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg, wo, vg, i_total)]
+                #print("All bounds met.")
             else:
-                print("Not all bounds met.\n")
+                #print("Not all bounds met.\n")
+                pass
                 
     if designs == []:
         print("FAIL. No solutions found.")
@@ -203,7 +207,10 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             psrr=final_op_amp[3],
             pm=final_op_amp[4],
             linereg=final_op_amp[5],
-            loadreg=final_op_amp[6])
+            loadreg=final_op_amp[6],
+            wo=final_op_amp[7],
+            vg=final_op_amp[8],
+            i_total=final_op_amp[9])
         return final_design
 
 
@@ -272,10 +279,11 @@ def run_main():
 	vb_n=0,
 	cload=20e-14,
 	rload=1e6,
-	rsource=10,
+	rsource=100,
         vg_res=0.001,
 	psrr_min=1,
         pm_min=45,
+        err_max=0.1,
 	linereg_max=0.02,
 	loadreg_max=0.05,
 	delta_v_lnr=1e-3,
