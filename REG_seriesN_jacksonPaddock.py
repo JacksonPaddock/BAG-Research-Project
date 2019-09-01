@@ -101,13 +101,12 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     print("Estimated gm and ro: {}, {}\n".format(gm, ro))
     #print(db_n.query(vds=vds,vbs=vb_n-vref))
 
-    # Find location of output pole with determined parameters.
-    wn = (ro + rsource + rload + gm*ro*rload)/(rload*cload*(ro + rsource))
-    # Find lowest possible unity gain frequency, not dependent on other poles.
-    if psrr_min > wn*(ro + rsource + gm*ro*rsource):
-        wo_min = wn*np.sqrt((psrr_min/(wn*cload*(ro + rsource)))**2 - 1)
-    else:
-        wo_min = 1
+    # Find location of loop gain pole with determined parameters.
+    wa = (ro + rsource + rload)/(rload*cload*(ro + rsource))
+    # Minimum op amp gain using loop gain equation and static error bound.
+    min_Ao = max((ro + rsource + rload)/(gm*ro*rload), vg/(err_max*vref))
+
+    ## Determine w1 and w2 of op amp
     # Sweep op amp lower pole magnitude and determine other parameters.
     stop = 8 #TODO: Define upper limit on pole frequencies.
     designs = []
@@ -119,14 +118,51 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         a = 1
         b = -(wn + w1 + w2) * np.tan(np.pi/180*(180 - pm_min))
         c = -(wn*w1 + wn*w2 + w1*w2)
-        d = wn*w1*w2*np.tan(np.pi/180*(180 - pm_min))
+        d = wn*w1*w2 * np.tan(np.pi/180*(180 - pm_min))
         wo_max = float('inf')
         for root in np.roots([a,b,c,d]):
             if wo_max > root and root >= 0:
                 wo_max = root
-        if wo_min > wo_max:
-            print("Bounds cannot be met for specific op amp poles. Trying next iteration.")
+
+        ## Define helper functions to find corresponding Ao and wo
+        def Ao_to_wo(Ao):
+            a = 1/(w1*w2*wa)**2
+            b = (w1**2 + w2**2 + wa**2)/(w1*w2*wa)**2
+            c = 1/w1**2 + 1/w2**2 + 1/wa**2
+            d = 1 - (gm*ro*rload*Ao/(ro + rsource + rload))**2
+            roots = np.sqrt(np.roots([a,b,c,d]))
+            for root in roots:
+                if isreal(root):
+                    return root
+
+        def wo_to_Ao(wo):
+            return (ro + rsource + rload)/(gm*ro*rload)*np.sqrt((1+(wo/w1)**2)*(1+(wo/w2)**2)*(1+(wo/wa)**2))
+
+        # Use PSRR bound to possibly tighten lower bound on Ao
+        if psrr_min > ro + rsource + rload:
+            psrr_min_wo = wa*np.sqrt((psrr_min/(ro + rsource + rload))**2 - 1)
+            Ao_min = max(Ao_min, wo_to_Ao(psrr_min_wo))
+        # Make sure bounds are valid
+        if Ao_min > wo_to_Ao(wo_max):
             continue
+
+        ## Use phase margin bound to determine maximum wo
+
+        ## Sweep wo or Ao in range
+
+            ## Check if design is plausible (different file?)
+
+            ## Check remaining bounds.
+
+
+
+
+    # Find lowest possible unity gain frequency, not dependent on other poles.
+    if psrr_min > wn*(ro + rsource + gm*ro*rsource):
+        wo_min = wn*np.sqrt((psrr_min/(wn*cload*(ro + rsource)))**2 - 1)
+    else:
+        wo_min = 1
+    
         
 
         # TODO: Check if op amp design is plausible through different file?
