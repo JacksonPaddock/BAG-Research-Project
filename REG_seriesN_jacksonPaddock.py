@@ -102,9 +102,9 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     #print(db_n.query(vds=vds,vbs=vb_n-vref))
 
     # Find location of loop gain pole with determined parameters.
-    wa = (ro + rsource + rload)/(rload*cload*(ro + rsource))
+    wa = (ro + rsource + rload + gm*ro*rload)/(rload*cload*(ro + rsource))
     # Minimum op amp gain using loop gain equation and static error bound.
-    Ao_min = max((ro + rsource + rload)/(gm*ro*rload), vg/(err_max*vref))
+    Ao_min = max((ro + rsource + rload + gm*ro*rload)/(gm*ro*rload), vg/(err_max*vref))
 
     ## Determine w1 and w2 of op amp
     # Sweep op amp lower pole magnitude and determine other parameters.
@@ -119,7 +119,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             a = 1/(w1*w2*wa)**2
             b = (w1**2 + w2**2 + wa**2)/(w1*w2*wa)**2
             c = 1/w1**2 + 1/w2**2 + 1/wa**2
-            d = 1 - (gm*ro*rload*Ao/(ro + rsource + rload))**2
+            d = 1 - (gm*ro*rload*Ao/(ro + rsource + rload + gm*ro*rload))**2
             roots = np.sqrt(np.roots([a,b,c,d]))
             return roots[2]
             for root in roots:
@@ -128,7 +128,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                     return root
 
         def wo_to_Ao(wo):
-            return (ro + rsource + rload)/(gm*ro*rload)*np.sqrt((1+(wo/w1)**2)*(1+(wo/w2)**2)*(1+(wo/wa)**2))
+            return (ro + rsource + rload + gm*ro*rload)/(gm*ro*rload)*np.sqrt((1+(wo/w1)**2)*(1+(wo/w2)**2)*(1+(wo/wa)**2))
 
         # Use phase margin to determine maximum unity gain frequency.
         a = 1
@@ -143,7 +143,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
 
         # Use PSRR bound to possibly tighten lower bound on Ao.
         if psrr_min > ro + rsource + rload:
-            psrr_min_wo = wa*np.sqrt((psrr_min/(ro + rsource + rload))**2 - 1)
+            psrr_min_wo = wa*np.sqrt((psrr_min/(ro + rsource + rload + gm*ro*rload))**2 - 1)
             Ao_min = max(Ao_min, wo_to_Ao(psrr_min_wo))
         # Make sure bounds are valid.
         if Ao_min > Ao_max:
@@ -210,7 +210,8 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
                 psrr = gm*ro*A
                 pm = 180 - 180/np.pi*(np.arctan(wo/wa) + np.arctan(wo/w1) + np.arctan(wo/w2))
-                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg, wo, vg, i_total)]
+                dc_out = vref - vg/Ao
+                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg, wo, vg, i_total, dc_out)]
                 #print("All bounds met.")
             else:
                 #print("Not all bounds met.\n")
@@ -233,7 +234,8 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             loadreg=final_op_amp[6],
             wo=final_op_amp[7],
             vg=final_op_amp[8],
-            i_total=final_op_amp[9])
+            i_total=final_op_amp[9],
+            dc_output=final_op_amp[10])
         return final_design
 
 
