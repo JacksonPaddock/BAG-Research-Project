@@ -104,7 +104,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     # Find location of loop gain pole with determined parameters.
     wa = (ro + rsource + rload)/(rload*cload*(ro + rsource))
     # Minimum op amp gain using loop gain equation and static error bound.
-    min_Ao = max((ro + rsource + rload)/(gm*ro*rload), vg/(err_max*vref))
+    Ao_min = max((ro + rsource + rload)/(gm*ro*rload), vg/(err_max*vref))
 
     ## Determine w1 and w2 of op amp
     # Sweep op amp lower pole magnitude and determine other parameters.
@@ -112,66 +112,52 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     designs = []
     for w1 in np.logspace(1,stop):
         # Choose third pole to interfere less with second pole. TODO: Better way?
-        w2 = 100*max(wn, w1)
-        # Find minimum op amp gain required.
-        # With 3 poles, wo is the solution to a cubic equation:
-        a = 1
-        b = -(wn + w1 + w2) * np.tan(np.pi/180*(180 - pm_min))
-        c = -(wn*w1 + wn*w2 + w1*w2)
-        d = wn*w1*w2 * np.tan(np.pi/180*(180 - pm_min))
-        wo_max = float('inf')
-        for root in np.roots([a,b,c,d]):
-            if wo_max > root and root >= 0:
-                wo_max = root
+        w2 = 100*max(wa, w1)
 
-        ## Define helper functions to find corresponding Ao and wo
+        ## Define helper functions to find corresponding Ao and wo.
         def Ao_to_wo(Ao):
             a = 1/(w1*w2*wa)**2
             b = (w1**2 + w2**2 + wa**2)/(w1*w2*wa)**2
             c = 1/w1**2 + 1/w2**2 + 1/wa**2
             d = 1 - (gm*ro*rload*Ao/(ro + rsource + rload))**2
             roots = np.sqrt(np.roots([a,b,c,d]))
+            return roots[2]
             for root in roots:
-                if isreal(root):
+                if np.isreal(root):
+                    
                     return root
 
         def wo_to_Ao(wo):
             return (ro + rsource + rload)/(gm*ro*rload)*np.sqrt((1+(wo/w1)**2)*(1+(wo/w2)**2)*(1+(wo/wa)**2))
 
-        # Use PSRR bound to possibly tighten lower bound on Ao
+        # Use phase margin to determine maximum unity gain frequency.
+        a = 1
+        b = -(wa + w1 + w2) * np.tan(np.pi/180*(180 - pm_min))
+        c = -(wa*w1 + wa*w2 + w1*w2)
+        d = wa*w1*w2 * np.tan(np.pi/180*(180 - pm_min))
+        wo_max = float('inf')
+        for root in np.roots([a,b,c,d]):
+            if wo_max > root and root >= 0:
+                wo_max = root
+        Ao_max = wo_to_Ao(wo_max)
+
+        # Use PSRR bound to possibly tighten lower bound on Ao.
         if psrr_min > ro + rsource + rload:
             psrr_min_wo = wa*np.sqrt((psrr_min/(ro + rsource + rload))**2 - 1)
             Ao_min = max(Ao_min, wo_to_Ao(psrr_min_wo))
-        # Make sure bounds are valid
-        if Ao_min > wo_to_Ao(wo_max):
-            continue
+        # Make sure bounds are valid.
+        if Ao_min > Ao_max:
+            continue            
 
-        ## Use phase margin bound to determine maximum wo
+        ## Sweep Ao in range
+        for Ao in np.logspace(np.log10(Ao_min), np.log10(Ao_max)):
 
-        ## Sweep wo or Ao in range
-
-            ## Check if design is plausible (different file?)
+            ## TODO: Check if design is plausible (different file?).
 
             ## Check remaining bounds.
 
 
-
-
-    # Find lowest possible unity gain frequency, not dependent on other poles.
-    if psrr_min > wn*(ro + rsource + gm*ro*rsource):
-        wo_min = wn*np.sqrt((psrr_min/(wn*cload*(ro + rsource)))**2 - 1)
-    else:
-        wo_min = 1
-    
         
-
-        # TODO: Check if op amp design is plausible through different file?
-        
-        # TODO: Check definition of Ao. What equation is it derived from? why does it not set psrr correctly?
-        for wo in np.logspace(np.log10(wo_min), np.log10(wo_max)):
-            Ao = wn*(ro + rsource)*cload*(1 + (wo/wn)**2)*(1 + (wo/w1)**2)*(1 + (wo/w2)**2)/(gm*ro)
-            if Ao < vg/err_max - 1:
-                continue
             # Variables for transfer function and output resistance equations.
             a2 = ro + rsource + rload + gm*ro*rload
             b2 = gm*ro*rload*Ao + a2
@@ -185,6 +171,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 rout_max = float('inf')
             else:
                 asymptote = False
+                wo = Ao_to_wo(Ao)
                 # Find maximum magnitude of transfer function in [0, wo].
                 H = lambda x: (b2 - a2) / np.sqrt((b2 + x*x*(c2*e2 - a2/d2))**2 + (x*(a2*e2 + c2*(1 - x*x/d2)))**2)
                 H_max = max(H(0),H(wo))
@@ -219,10 +206,10 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 if loadreg_max >= loadreg:
                     fits_loadreg = True
                     #print("Load Regulation bound met.")
-            A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
-            psrr = gm*ro*A
-            if fits_linereg and fits_loadreg and psrr > psrr_min:
-                pm = 180 - 180/np.pi*(np.arctan(wo/wn) + np.arctan(wo/w1) + np.arctan(wo/w2))
+            if fits_linereg and fits_loadreg:
+                A = Ao / np.sqrt((1 + wo*wo/(w1*w1))*(1 + wo*wo/(w2*w2)))
+                psrr = gm*ro*A
+                pm = 180 - 180/np.pi*(np.arctan(wo/wa) + np.arctan(wo/w1) + np.arctan(wo/w2))
                 designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg, wo, vg, i_total)]
                 #print("All bounds met.")
             else:
@@ -319,7 +306,7 @@ def run_main():
         vg_res=0.001,
 	psrr_min=1,
         pm_min=45,
-        err_max=0.1,
+        err_max=0.05,
 	linereg_max=0.02,
 	loadreg_max=0.05,
 	delta_v_lnr=1e-3,
