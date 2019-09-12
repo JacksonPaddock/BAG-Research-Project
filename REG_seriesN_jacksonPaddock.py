@@ -35,11 +35,12 @@ def get_db(spec_file, intent, interp_method='spline', sim_env='TT'):
     return mos_db
 
 def design_seriesN_reg_eqn(db_n, sim_env,
-        ibias, vdd, vref, vb_n,
+        ibias, vdd, vref, vb_n, max_fin,
         cload, rload, rsource,
         vg_res, psrr_min, pm_min, err_max,
-        linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr,
-        max_w1):
+        linereg_max=float('inf'), loadreg_max=float('inf'),
+        delta_v_lnr=1e-3, delta_i_ldr=1e-9,
+        max_w1=1e8):
     """
     Designs an LDO with an op amp abstracted as a voltage-controlled voltage
     source and source resistance. Equation-based.
@@ -50,32 +51,35 @@ def design_seriesN_reg_eqn(db_n, sim_env,
         vdd:          Float. Supply voltage.
         vref:         Float. Reference voltage.
         vb_n:         Float. Back-gate/body voltage of NMOS.
+        max_fin:      Float. Maximum number of transistor fingers.
         cload:        Float. Output load capacitance.
         rload:        Float. Output load resistance.
         rsource:      Float. Supply resistance.
         vg_res:       Float. Step resolution when sweeping transistor gate voltage.
         psrr_min:     Float. Minimum PSRR.
         pm_min:       Float. Minimum phase margin.
-        err_max       Float. Maximum percent static error at output (as decimal).
-        linereg_max   Float. Maximum percent change in output voltage given
+        err_max:      Float. Maximum percent static error at output (as decimal).
+        linereg_max:  Float. Maximum percent change in output voltage given
                              change in input voltage (as decimal).
-        loadreg_max   Float. Maximum percent change in output voltage given
+        loadreg_max:  Float. Maximum percent change in output voltage given
                              change in output current (as decimal).
-        delta_v_lnr   Float. Given change in input voltage to calculate line reg.
-        delta_i_ldr   Float. Given change in output current to calculate load reg.
-        max_w1        Float. Maximum angular frequency of lower op amp pole.
+        delta_v_lnr:  Float. Given change in input voltage to calculate line reg.
+        delta_i_ldr:  Float. Given change in output current to calculate load reg.
+        max_w1:       Float. Maximum angular frequency of lower op amp pole.
 
     Raises:
         ValueError: If unable to meet the specification requirements.
     Returns:
         A dictionary with the following key:value pairings:
-        Ao:     Float. DC gain of op amp.
-        w1:     Float. Lowest op amp pole frequency.
-        w2:     Float. Second lowest op amp pole frequency.
-        psrr:   Float. Expected PSRR.
-        pm:     Float. Expected phase margin.
-        linereg:Float. Expected maximum percent line regulation for given input.
-        loadreg:Float. Expected maximum percent load regulation for given input.
+        Ao:           Float. DC gain of op amp.
+        w1:           Float. Lowest op amp pole frequency.
+        w2:           Float. Second lowest op amp pole frequency.
+        num_fin:      Float. Number of fingers on the transistor.
+        dc_out:       Float. Expected DC output.
+        psrr:         Float. Expected PSRR.
+        pm:           Float. Expected phase margin.
+        linereg:      Float. Expected maximum percent line regulation for given input.
+        loadreg:      Float. Expected maximum percent load regulation for given input.
     """
     if rload == 0:
         raise ValueError("Output is shorted to ground.")
@@ -91,14 +95,17 @@ def design_seriesN_reg_eqn(db_n, sim_env,
     best_i_total_est = float('inf')
     gm = 0
     ro = 0
+    num_fin = 1
     
-    for vg in vg_vec:
-        params = db_n.query(vgs=vg-vref, vds=vds, vbs=vb_n-vref)
-        i_total_est = params['ibias']
-        if abs(i_total - best_i_total_est) > abs(i_total - i_total_est):
-            best_i_total_est = i_total_est
-            gm = params['gm']
-            ro = 1 / params['gds']
+    for fingers in range(1, max_fin + 1):
+        for vg in vg_vec:
+            params = db_n.query(vgs=vg-vref, vds=vds, vbs=vb_n-vref)
+            i_total_est = fingers*params['ibias']
+            if abs(i_total - best_i_total_est) > abs(i_total - i_total_est):
+                best_i_total_est = i_total_est
+                gm = params['gm']*fingers
+                ro = 1 / (params['gds']*fingers)
+                num_fin = fingers
 
     print("Estimated gm and ro: {}, {}\n".format(gm, ro))
     #print(db_n.query(vds=vds,vbs=vb_n-vref))
@@ -126,9 +133,6 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             c = 1/w1**2 + 1/w2**2 + 1/wa**2
             d = 1 - (gm*ro*rload*Ao/(ro + rsource + rload + gm*ro*rload))**2
             roots_sq = np.roots([a,b,c,d])
-            # TODO: Fix this.
-            #if roots[2] < 10**7 and Ao <200:
-            #return roots[2]
             for root_sq in roots_sq:
                 if root_sq > 0:
                     return np.sqrt(root_sq)
@@ -214,7 +218,7 @@ def design_seriesN_reg_eqn(db_n, sim_env,
                 psrr = gm*ro*A
                 pm = 180 - 180/np.pi*(np.arctan(wo/wa) + np.arctan(wo/w1) + np.arctan(wo/w2))
                 dc_out = vref - vg/Ao
-                designs += [(Ao, w1, w2, psrr, pm, linereg, loadreg, wo, vg, i_total, dc_out)]
+                designs += [(Ao, w1, w2, num_fin, dc_out, psrr, pm, linereg, loadreg)]
                 #print("All bounds met.")
             else:
                 #print("Not all bounds met.\n")
@@ -231,22 +235,22 @@ def design_seriesN_reg_eqn(db_n, sim_env,
             Ao=final_op_amp[0],
             w1=final_op_amp[1],
             w2=final_op_amp[2],
-            psrr=final_op_amp[3],
-            pm=final_op_amp[4],
-            linereg=final_op_amp[5],
-            loadreg=final_op_amp[6],
-            wo=final_op_amp[7],
-            vg=final_op_amp[8],
-            i_total=final_op_amp[9],
-            dc_output=final_op_amp[10])
+            num_fin=final_op_amp[3],
+            dc_output=final_op_amp[4],
+            psrr=final_op_amp[5],
+            pm=final_op_amp[6],
+            linereg=final_op_amp[7],
+            loadreg=final_op_amp[8],
+            )
         return final_design
 
 
 def design_seriesN_reg_lti(db_n, sim_env,
         ibias, vdd, vref, vb_n,
         cload, rload, rsource,
-        vg_res, psrr_min, pm_min,
-        linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr):
+        vg_res, psrr_min, pm_min, err_max,
+        linereg_max, loadreg_max, delta_v_lnr, delta_i_ldr,
+        max_w1):
     """
     Designs an LDO with an op amp abstracted as a voltage-controlled voltage
     source and source resistance. Equation-based.
@@ -301,10 +305,11 @@ def run_main():
     specs = dict(
         db_n=nch_db,
         sim_env=sim_env,
-	ibias=1e-6,
+	ibias=2e-6,
 	vdd=1.0,
 	vref=0.5,
 	vb_n=0,
+        max_fin=3,
 	cload=2e-15,
 	rload=1e6,
 	rsource=1000,
